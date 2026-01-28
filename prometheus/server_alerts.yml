@@ -1,0 +1,166 @@
+groups:
+  - name: Server Alerts
+    rules:
+
+      # ============================================================
+      # MAJOR — requires immediate attention
+      # ============================================================
+
+      - alert: HostDown
+        expr: up == 0
+        for: 5m
+        labels:
+          severity: major
+        annotations:
+          summary: "Server is down"
+          description: |
+            Meaning: Prometheus cannot reach this target (server or service is unavailable).
+            First checks: ping/ssh, server uptime, firewall rules, DNS (if hostname), Prometheus Targets page.
+            Instance={{ $labels.instance }}, job={{ $labels.job }}
+
+      - alert: FilesystemReadOnly
+        expr: node_filesystem_readonly == 1
+        for: 1m
+        labels:
+          severity: major
+        annotations:
+          summary: "Filesystem mounted read-only"
+          description: |
+            Meaning: Filesystem was remounted read-only, usually due to disk I/O errors or filesystem corruption.
+            First checks: dmesg/journalctl for I/O errors, disk SMART status, underlying storage health.
+            Typical fix: investigate disk errors, run fsck (often requires reboot), restore storage health.
+            Instance={{ $labels.instance }}, mountpoint={{ $labels.mountpoint }}, device={{ $labels.device }}
+
+      - alert: NodeExporterDown
+        expr: up{job=~"node-exporter.*"} == 0
+        for: 5m
+        labels:
+          severity: major
+        annotations:
+          summary: "node_exporter is down"
+          description: |
+            Meaning: Prometheus cannot scrape node_exporter, so host metrics are missing.
+            First checks: node_exporter container/service status, port 9100 firewall allowlist,
+            docker logs, try curl http://<host>:9100/metrics from Server A.
+            Instance={{ $labels.instance }}, job={{ $labels.job }}
+
+      # ============================================================
+      # WARNING — problem is developing or resource pressure detected
+      # ============================================================
+
+      - alert: HostOutOfMemory
+        expr: (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 < 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low available RAM"
+          description: |
+            Meaning: Available RAM is below 10%; system may slow down or trigger OOM killer.
+            First checks: top/htop, free -h, biggest processes (RSS), container memory usage,
+            application logs for OOM events, consider tuning or adding RAM.
+            Instance={{ $labels.instance }}
+
+      - alert: HostHighCPULoad
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[2m])) * 100) > 85
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage"
+          description: |
+            Meaning: CPU usage stayed above 85%, may cause slow responses or missed blocks.
+            First checks: top/htop to find hot processes, node/application logs,
+            check if disk I/O wait is high, consider CPU scaling or tuning workloads.
+            Instance={{ $labels.instance }}
+
+      - alert: HostDiskIOHigh
+        expr: rate(node_disk_io_time_seconds_total[5m]) > 0.6
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High disk I/O busy time"
+          description: |
+            Meaning: Disk is busy >60% of the time, which may slow down databases and nodes.
+            First checks: iostat -x, vmstat, identify heavy readers/writers,
+            check disk latency, storage limits, and filesystem health.
+            Instance={{ $labels.instance }}, device={{ $labels.device }}
+
+      - alert: HostOutOfDiskSpace
+        expr: |
+          (
+            node_filesystem_avail_bytes{
+              fstype!~"tmpfs|devtmpfs|overlay|squashfs|cgroup|proc|sysfs|nsfs",
+              mountpoint!~"/run|/sys|/proc|/dev|/var/lib/docker.*"
+            } * 100
+          ) / node_filesystem_size_bytes < 10
+          and node_filesystem_readonly == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low disk space"
+          description: |
+            Meaning: Less than 10% disk space left on a real filesystem.
+            First checks: df -h, find largest directories (du),
+            clean up logs, docker images/volumes, enable log rotation,
+            or expand disk size.
+            Instance={{ $labels.instance }}, mountpoint={{ $labels.mountpoint }}, device={{ $labels.device }}
+
+      - alert: HostOutOfDiskSpaceWithin24H
+        expr: |
+          predict_linear(
+            node_filesystem_avail_bytes{
+              fstype!~"tmpfs|devtmpfs|overlay|squashfs|cgroup|proc|sysfs|nsfs",
+              mountpoint!~"/run|/sys|/proc|/dev|/var/lib/docker.*"
+            }[4h],
+            24 * 3600
+          ) < 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disk predicted to fill within 24 hours"
+          description: |
+            Meaning: Based on recent trend, disk space is expected to run out within 24 hours.
+            First checks: identify fast-growing files/logs, runaway processes,
+            docker disk usage, cleanup unused data or increase disk capacity.
+            Instance={{ $labels.instance }}, mountpoint={{ $labels.mountpoint }}, device={{ $labels.device }}
+
+      - alert: HostOutOfInodes
+        expr: |
+          (
+            node_filesystem_files_free{
+              fstype!~"tmpfs|devtmpfs|overlay|squashfs|cgroup|proc|sysfs|nsfs",
+              mountpoint!~"/run|/sys|/proc|/dev|/var/lib/docker.*"
+            } * 100
+          ) / node_filesystem_files < 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low free inodes"
+          description: |
+            Meaning: Filesystem is running out of inodes (too many small files).
+            Even with free disk space, new files cannot be created.
+            First checks: df -i, find directories with huge file counts,
+            clean up temp/log files, fix apps creating excessive small files.
+            Instance={{ $labels.instance }}, mountpoint={{ $labels.mountpoint }}, device={{ $labels.device }}
+
+      # ============================================================
+      # INFO — informational signals, investigate if persistent
+      # ============================================================
+
+      - alert: HostNetworkErrors
+        expr: rate(node_network_receive_errs_total[5m]) + rate(node_network_transmit_errs_total[5m]) > 1
+        for: 10m
+        labels:
+          severity: info
+        annotations:
+          summary: "Network errors detected"
+          description: |
+            Meaning: Network interface reports receive/transmit errors.
+            First checks: ip -s link, dmesg for NIC/driver errors,
+            check MTU/duplex settings, provider network status.
+            Instance={{ $labels.instance }}, device={{ $labels.device }}
