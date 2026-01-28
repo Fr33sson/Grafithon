@@ -1,0 +1,28 @@
+{{ define "telegram.grafithon" -}}
+{{- $status := .Status -}}
+{{- $emoji := "🔥" -}}
+{{- if eq $status "resolved" -}}{{- $emoji = "✅" -}}{{- end -}}
+
+{{- range .Alerts }}
+{{- $sev := or .Labels.severity "unknown" -}}
+
+<b>{{ $emoji }} {{ $status | toUpper }}</b> — <b>{{ $sev }}</b> — <b>{{ .Labels.alertname }}</b>
+<b>Where:</b> {{ .Labels.instance }} (job={{ .Labels.job }})
+
+{{- if .Annotations.summary }}
+<b>Summary:</b> {{ .Annotations.summary }}
+{{- end }}
+<b>Description:</b> {{ .Annotations.description }}
+
+{{- if .Labels.mountpoint }}
+<b>Mount:</b> {{ .Labels.mountpoint }}{{ if .Labels.device }} ({{ .Labels.device }}){{ end }}
+{{- end }}
+
+<b>Started:</b> {{ .StartsAt }}
+{{- if eq .Status "resolved" }}
+<b>Ended:</b> {{ .EndsAt }}
+{{- end }}
+
+────────────────────
+{{- end }}
+{{- end }}
