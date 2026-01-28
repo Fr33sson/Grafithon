@@ -1,0 +1,68 @@
+global:
+  resolve_timeout: 5m
+
+templates:
+  - "/etc/alertmanager/templates/*.tmpl"
+
+route:
+  receiver: telegram-warning
+
+  # Grouping prevents spam and keeps messages relevant per host/job
+  group_by: ["alertname", "instance", "job", "severity"]
+  group_wait: 30s
+  group_interval: 5m
+
+  # Default repeat (overridden by sub-routes below)
+  repeat_interval: 2h
+
+  routes:
+    - receiver: telegram-major
+      matchers:
+        - severity="major"
+      repeat_interval: 30m
+
+    - receiver: telegram-warning
+      matchers:
+        - severity="warning"
+      repeat_interval: 2h
+
+    - receiver: telegram-info
+      matchers:
+        - severity="info"
+      repeat_interval: 3h
+
+# Suppress warning/info alerts when the host is down
+inhibit_rules:
+  - source_matchers:
+      - alertname="HostDown"
+    target_matchers:
+      - severity=~"warning|info"
+    equal: ["instance"]
+
+receivers:
+  - name: telegram-major
+    telegram_configs:
+      - api_url: https://api.telegram.org
+        parse_mode: "HTML"
+        send_resolved: true
+        message: '{{ template "telegram.grafithon" . }}'
+        chat_id: ${TELEGRAM_CHAT_ID}
+        bot_token: ${TELEGRAM_BOT_TOKEN}
+
+  - name: telegram-warning
+    telegram_configs:
+      - api_url: https://api.telegram.org
+        parse_mode: "HTML"
+        send_resolved: true
+        message: '{{ template "telegram.grafithon" . }}'
+        chat_id: ${TELEGRAM_CHAT_ID}
+        bot_token: ${TELEGRAM_BOT_TOKEN}
+
+  - name: telegram-info
+    telegram_configs:
+      - api_url: https://api.telegram.org
+        parse_mode: "HTML"
+        send_resolved: true
+        message: '{{ template "telegram.grafithon" . }}'
+        chat_id: ${TELEGRAM_CHAT_ID}
+        bot_token: ${TELEGRAM_BOT_TOKEN}
