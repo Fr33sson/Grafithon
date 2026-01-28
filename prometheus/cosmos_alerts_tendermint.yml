@@ -1,0 +1,75 @@
+groups:
+  - name: Cosmos Alerts - Tendermint
+    rules:
+
+      # =======================
+      # MAJOR
+      # =======================
+      - alert: TendermintBlockHeightStalled
+        expr: increase(tendermint_consensus_height{job="tendermint"}[10m]) == 0
+        for: 10m
+        labels:
+          severity: major
+        annotations:
+          summary: "Tendermint height stalled"
+          description: "Consensus height did not increase for 10m (instance={{ $labels.instance }}). Check node process, disk I/O, network, logs."
+
+      - alert: MissingBlocksTendermintMajor
+        expr: delta(tendermint_consensus_validator_missed_blocks{job="tendermint", skip_missing_blocks_alert!="true"}[10m]) > 20
+        for: 5m
+        labels:
+          severity: major
+        annotations:
+          summary: "Validator missing blocks (Tendermint)"
+          description: "Missed blocks >20 in 10m (instance={{ $labels.instance }}). Check CPU/RAM, disk I/O, peers, node logs, sentry connectivity."
+
+      # =======================
+      # WARNING
+      # =======================
+      - alert: MissingBlocksTendermintWarning
+        expr: delta(tendermint_consensus_validator_missed_blocks{job="tendermint", skip_missing_blocks_alert!="true"}[10m]) > 5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Starting to miss blocks (Tendermint)"
+          description: "Missed blocks >5 in 10m (instance={{ $labels.instance }}). Early warning: check load, peers and logs."
+
+      - alert: DegradedSyncingTendermint
+        expr: increase(tendermint_consensus_height{job="tendermint", skip_sync_alert!="true"}[5m]) < 20
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Degraded syncing (Tendermint)"
+          description: "Consensus height increased less than 20 blocks in 5m (instance={{ $labels.instance }}). Check peers, disk I/O, CPU, network."
+
+      - alert: TendermintSyncingTooLong
+        expr: tendermint_consensus_syncing{job="tendermint"} == 1
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Node syncing too long (Tendermint)"
+          description: "Node stayed in syncing state for 30m (instance={{ $labels.instance }}). Check connectivity, snapshots, disk performance."
+
+      # =======================
+      # INFO
+      # =======================
+      - alert: TendermintNoPeers
+        expr: tendermint_p2p_peers{job="tendermint"} == 0
+        for: 5m
+        labels:
+          severity: major
+        annotations:
+          summary: "No peers (Tendermint)"
+          description: "Node has 0 peers for 5m (instance={{ $labels.instance }}). Check P2P ports, firewall/NAT, seed/persistent peers."
+
+      - alert: TendermintTooFewPeers
+        expr: tendermint_p2p_peers{job="tendermint"} < 3
+        for: 15m
+        labels:
+          severity: info
+        annotations:
+          summary: "Too few peers (Tendermint)"
+          description: "Peers <3 for 15m (instance={{ $labels.instance }}). Check P2P connectivity, seeds, and networking."
