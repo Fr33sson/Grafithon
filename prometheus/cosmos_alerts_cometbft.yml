@@ -1,0 +1,75 @@
+groups:
+  - name: Cosmos Alerts - CometBFT
+    rules:
+
+      # =======================
+      # MAJOR
+      # =======================
+      - alert: CometBFTBlockHeightStalled
+        expr: increase(cometbft_consensus_height{job="cometbft"}[10m]) == 0
+        for: 10m
+        labels:
+          severity: major
+        annotations:
+          summary: "CometBFT height stalled"
+          description: "Consensus height did not increase for 10m (instance={{ $labels.instance }}). Check node process, disk I/O, network, logs."
+
+      - alert: MissingBlocksCometBFTMajor
+        expr: delta(cometbft_consensus_validator_missed_blocks{job="cometbft", skip_missing_blocks_alert!="true"}[10m]) > 20
+        for: 5m
+        labels:
+          severity: major
+        annotations:
+          summary: "Validator missing blocks (CometBFT)"
+          description: "Missed blocks >20 in 10m (instance={{ $labels.instance }}). Check CPU/RAM, disk I/O, peers, node logs, sentry connectivity."
+
+      # =======================
+      # WARNING
+      # =======================
+      - alert: MissingBlocksCometBFTWarning
+        expr: delta(cometbft_consensus_validator_missed_blocks{job="cometbft", skip_missing_blocks_alert!="true"}[10m]) > 5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Starting to miss blocks (CometBFT)"
+          description: "Missed blocks >5 in 10m (instance={{ $labels.instance }}). Early warning: check load, peers and logs."
+
+      - alert: DegradedSyncingCometBFT
+        expr: increase(cometbft_consensus_height{job="cometbft", skip_sync_alert!="true"}[5m]) < 20
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Degraded syncing (CometBFT)"
+          description: "Consensus height increased less than 20 blocks in 5m (instance={{ $labels.instance }}). Check peers, disk I/O, CPU, network."
+
+      - alert: CometBFTSyncingTooLong
+        expr: cometbft_consensus_syncing{job="cometbft"} == 1
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Node syncing too long (CometBFT)"
+          description: "Node stayed in syncing state for 30m (instance={{ $labels.instance }}). Check connectivity, snapshots, disk performance."
+
+      # =======================
+      # INFO
+      # =======================
+      - alert: CometBFTNoPeers
+        expr: cometbft_p2p_peers{job="cometbft"} == 0
+        for: 5m
+        labels:
+          severity: major
+        annotations:
+          summary: "No peers (CometBFT)"
+          description: "Node has 0 peers for 5m (instance={{ $labels.instance }}). Check P2P ports, firewall/NAT, seed/persistent peers."
+
+      - alert: CometBFTTooFewPeers
+        expr: cometbft_p2p_peers{job="cometbft"} < 3
+        for: 15m
+        labels:
+          severity: info
+        annotations:
+          summary: "Too few peers (CometBFT)"
+          description: "Peers <3 for 15m (instance={{ $labels.instance }}). Check P2P connectivity, seeds, and networking."
