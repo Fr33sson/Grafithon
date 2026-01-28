@@ -1,0 +1,102 @@
+# ============================================================
+# Prometheus configuration - Grafithon
+#
+# Server A:
+#   - Prometheus
+#   - Alertmanager
+#   - Grafana
+#   - Local node_exporter (Docker)
+#
+# Server B / C / D:
+#   - node_exporter (Docker)
+#   - port 9100 allowed ONLY from Server A public IP
+# ============================================================
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+
+external_labels:
+  environment: "prod"
+  monitor: "grafithon"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - "alertmanager:9093"
+
+rule_files:
+  - "/etc/prometheus/server_alerts.yml"
+  - "/etc/prometheus/cosmos_alerts_cometbft.yml"
+  - "/etc/prometheus/cosmos_alerts_tendermint.yml"
+
+scrape_configs:
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["prometheus:9090"]
+
+  # Local node exporter (Server A)
+  - job_name: "node-exporter-local"
+    static_configs:
+      - targets: ["node-exporter:9100"]
+        labels:
+          instance_name: "server-a"
+          role: "monitoring"
+    relabel_configs:
+      - source_labels: [instance_name]
+        target_label: instance
+
+  # External node exporters (Servers B/C/D)
+ # - job_name: "node-exporter-external"
+ #   scrape_interval: 30s
+ #   static_configs:
+ #     - targets: ["SERVER_B_PUBLIC_IP:9100"]
+ #       labels:
+ #         instance_name: "server-b"
+ #     - targets: ["SERVER_C_PUBLIC_IP:9100"]
+ #       labels:
+ #         instance_name: "server-c"
+ #     - targets: ["SERVER_D_PUBLIC_IP:9100"]
+ #       labels:
+ #         instance_name: "server-d"
+    relabel_configs:
+      - source_labels: [instance_name]
+        target_label: instance
+
+  # ==========================
+  # CometBFT nodes
+  # Typically metrics port is 26660
+  # ==========================
+ # - job_name: "cometbft"
+ #   scrape_interval: 30s
+ #   metrics_path: /metrics
+ #   static_configs:
+ #     - targets: ["NODE_IP:26660"]
+ #       labels:
+ #         instance_name: "node-1"
+      # - targets: ["NODE_2_IP:26660"]
+      #   labels:
+      #     instance_name: "node-2"
+   # relabel_configs:
+   #   - source_labels: [instance_name]
+   #     target_label: instance
+
+  # ==========================
+  # Tendermint nodes
+  # Metrics port depends on node config; often 26660
+  # ==========================
+ # - job_name: "tendermint"
+ #   scrape_interval: 30s
+ #   metrics_path: /metrics
+ #   static_configs:
+ #     - targets: ["NODE_IP:26660"]
+ #       labels:
+ #         instance_name: "node-1"
+      # - targets: ["NODE_2_IP:26660"]
+      #   labels:
+      #     instance_name: "node-2"
+   # relabel_configs:
+   #   - source_labels: [instance_name]
+   #     target_label: instance
