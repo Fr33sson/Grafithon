@@ -1,29 +1,30 @@
+# version: "3.8"
+
 services:
   prometheus:
-    image: prom/prometheus:v3
+    image: prom/prometheus:latest
     container_name: prometheus
     restart: unless-stopped
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
-      - --web.enable-lifecycle
+      - --storage.tsdb.retention.time=15d
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./prometheus/server_alerts.yml:/etc/prometheus/rules/server_alerts.yml:ro
-      - ./prometheus/cosmos_alerts_cometbft.yml:/etc/prometheus/rules/cosmos_alerts_cometbft.yml:ro
-      - ./prometheus/cosmos_alerts_tendermint.yml:/etc/prometheus/rules/cosmos_alerts_tendermint.yml:ro
+      - ./prometheus/server_alerts.yml:/etc/prometheus/server_alerts.yml:ro
+      - ./prometheus/cosmos_alerts_cometbft.yml:/etc/prometheus/cosmos_alerts_cometbft.yml:ro
+      - ./prometheus/cosmos_alerts_tendermint.yml:/etc/prometheus/cosmos_alerts_tendermint.yml:ro
       - prometheus_data:/prometheus
     networks:
       - internal
 
   alertmanager:
-    image: prom/alertmanager:v0
+    image: prom/alertmanager:latest
     container_name: alertmanager
     restart: unless-stopped
     command:
       - --config.file=/etc/alertmanager/config.yml
       - --storage.path=/alertmanager
-      - --config.expand-env
     env_file:
       - ./.env
     volumes:
@@ -34,13 +35,12 @@ services:
       - internal
 
   node-exporter:
-    image: prom/node-exporter:v1
+    image: prom/node-exporter:latest
     container_name: node-exporter
     restart: unless-stopped
     command:
       - --path.rootfs=/host
-      # If you want to hide self-metrics, uncomment:
-      # - --web.disable-exporter-metrics
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
     pid: host
     volumes:
       - /:/host:ro,rslave
@@ -48,50 +48,34 @@ services:
       - internal
 
   grafana:
-    image: grafana/grafana:12
+    image: grafana/grafana:latest
     container_name: grafana
     restart: unless-stopped
-    # Grafana official image runs as UID 472, helps avoid permission issues on volumes
     user: "472"
+    # Bind ONLY to localhost so Grafana is reachable only via systemd Caddy on the host
+    ports:
+      - "127.0.0.1:3000:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_SERVER_ROOT_URL=%(protocol)s://%(domain)s/
+      # Optional (recommended) if you want strict URL generation:
+      # - GF_SERVER_ROOT_URL=https://grafana.domain.com/
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
-    networks:
-      - internal
-      - edge
-
-  caddy:
-    image: caddy:2
-    container_name: caddy
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
     depends_on:
-      - grafana
+      - prometheus
     networks:
-      - edge
       - internal
 
 networks:
   internal:
-    internal: true
-  edge:
     driver: bridge
+    internal: true
 
 volumes:
   prometheus_data:
   alertmanager_data:
   grafana_data:
-  caddy_data:
-  caddy_config:
