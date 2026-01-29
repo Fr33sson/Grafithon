@@ -25,8 +25,6 @@ services:
     command:
       - --config.file=/etc/alertmanager/config.yml
       - --storage.path=/alertmanager
-    env_file:
-      - ./.env
     volumes:
       - ./alertmanager/config.yml:/etc/alertmanager/config.yml:ro
       - ./alertmanager/templates:/etc/alertmanager/templates:ro
@@ -52,15 +50,12 @@ services:
     container_name: grafana
     restart: unless-stopped
     user: "472"
-    # Bind ONLY to localhost so Grafana is reachable only via systemd Caddy on the host
     ports:
       - "127.0.0.1:3000:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_PASSWORD=CHANGE_ME_STRONG
       - GF_USERS_ALLOW_SIGN_UP=false
-      # Optional (recommended) if you want strict URL generation:
-      # - GF_SERVER_ROOT_URL=https://grafana.domain.com/
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
