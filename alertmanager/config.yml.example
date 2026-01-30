@@ -5,31 +5,28 @@ templates:
   - "/etc/alertmanager/templates/*.tmpl"
 
 route:
-  receiver: telegram-warning
+  # Default receiver (gets everything unless a sub-route overrides it)
+  receiver: telegram-all
 
-  # Grouping prevents spam and keeps messages relevant per host/job
+  # Group alerts to reduce spam and keep context per host/service
   group_by: ["alertname", "instance", "job", "severity"]
   group_wait: 30s
   group_interval: 5m
-
-  # Default repeat (overridden by sub-routes below)
   repeat_interval: 2h
 
   routes:
-    - receiver: telegram-major
+    # Send ONLY major alerts to Zenduty (in addition to Telegram)
+    - receiver: zenduty-major
       matchers:
         - severity="major"
       repeat_interval: 30m
+      continue: true
 
-    - receiver: telegram-warning
+    # Telegram receives everything (major/warning/info)
+    - receiver: telegram-all
       matchers:
-        - severity="warning"
+        - severity=~"major|warning|info"
       repeat_interval: 2h
-
-    - receiver: telegram-info
-      matchers:
-        - severity="info"
-      repeat_interval: 3h
 
 # Suppress warning/info alerts when the host is down
 inhibit_rules:
@@ -40,29 +37,17 @@ inhibit_rules:
     equal: ["instance"]
 
 receivers:
-  - name: telegram-major
+  - name: telegram-all
     telegram_configs:
       - api_url: https://api.telegram.org
         parse_mode: "HTML"
         send_resolved: true
         message: '{{ template "telegram.grafithon" . }}'
-        chat_id: ${TELEGRAM_CHAT_ID}
-        bot_token: ${TELEGRAM_BOT_TOKEN}
+        chat_id: 123456789
+        bot_token: "123456789:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 
-  - name: telegram-warning
-    telegram_configs:
-      - api_url: https://api.telegram.org
-        parse_mode: "HTML"
+  - name: zenduty-major
+    webhook_configs:
+      - url: "https://events.zenduty.com/api/events/REPLACE_WITH_YOUR_WEBHOOK"
         send_resolved: true
-        message: '{{ template "telegram.grafithon" . }}'
-        chat_id: ${TELEGRAM_CHAT_ID}
-        bot_token: ${TELEGRAM_BOT_TOKEN}
-
-  - name: telegram-info
-    telegram_configs:
-      - api_url: https://api.telegram.org
-        parse_mode: "HTML"
-        send_resolved: true
-        message: '{{ template "telegram.grafithon" . }}'
-        chat_id: ${TELEGRAM_CHAT_ID}
-        bot_token: ${TELEGRAM_BOT_TOKEN}
+        max_alerts: 0
