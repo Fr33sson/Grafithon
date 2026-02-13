@@ -23,7 +23,7 @@ global:
 alerting:
   alertmanagers:
     - static_configs:
-        - targets: ["alertmanager:9093"]
+        - targets: ["127.0.0.1:9093"]
 
 rule_files:
   - "/etc/prometheus/server_alerts.yml"
@@ -33,55 +33,45 @@ rule_files:
 scrape_configs:
   - job_name: "prometheus"
     static_configs:
-      - targets: ["prometheus:9090"]
+      - targets: ["127.0.0.1:9090"]
 
-  # Server A (local node exporter in this stack)
+  # Local node exporter (container in docker network)
+  # NOTE: Prometheus runs in host network, so it cannot resolve docker DNS names.
+  # We scrape node-exporter via localhost published port OR host-gateway alternative.
+  #
+  # Easiest: publish node-exporter to localhost and scrape 127.0.0.1:9100.
+  # If you do NOT publish 9100, then use host IP or keep node-exporter on host instead.
+  #
+  # Recommended approach (safe): publish node-exporter on localhost:
+  #   in docker-compose node-exporter add:
+  #     ports: ["127.0.0.1:9100:9100"]
+  #
   - job_name: "node-exporter-local"
     static_configs:
-      - targets: ["node-exporter:9100"]
+      - targets: ["127.0.0.1:9100"]
         labels:
-          instance_name: "server-a"
-    relabel_configs:
-      - source_labels: [instance_name]
-        target_label: instance
+          instance: "server-a"
 
-  # External servers B/C/D node_exporter
- # - job_name: "node-exporter-external"
- #   scrape_interval: 30s
- #   static_configs:
- #     - targets: ["SERVER_B_PUBLIC_IP:9100"]
- #       labels:
- #         instance_name: "server-b"
- #     - targets: ["SERVER_C_PUBLIC_IP:9100"]
- #       labels:
- #         instance_name: "server-c"
-      # - targets: ["SERVER_D_PUBLIC_IP:9100"]
-      #   labels:
-      #     instance_name: "server-d"
- #   relabel_configs:
- #     - source_labels: [instance_name]
- #       target_label: instance
+  # CometBFT metrics (systemd node on the same host)
+  - job_name: "testnet-local"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["127.0.0.1:PORT"]
+        labels:
+          chain_id: "testnet"
+          role: "fullnode"
+          instance: "network-fullnode"
+      - targets: ["127.0.0.1:PORT"]
+        labels:
+          chain_id: "testnet"
+          role: "validator"
+          instance: "val-testnet"
 
-  # CometBFT nodes
- # - job_name: "cometbft"
- #   scrape_interval: 30s
- #   metrics_path: /metrics
- #   static_configs:
- #     - targets: ["NODE_IP:26660"]
- #       labels:
- #         instance_name: "node-1"
- #   relabel_configs:
- #     - source_labels: [instance_name]
- #       target_label: instance
-
-  # Tendermint nodes
- # - job_name: "tendermint"
- #   scrape_interval: 30s
- #   metrics_path: /metrics
- #   static_configs:
- #     - targets: ["NODE_IP:26660"]
- #       labels:
- #         instance_name: "node-1"
- #   relabel_configs:
- #     - source_labels: [instance_name]
- #       target_label: instance
+  # Remote servers example (node exporter)
+  # - job_name: "node-exporter-remote"
+  #   static_configs:
+  #     - targets:
+  #         - "SERVER_B_IP:9001"
+  #         - "SERVER_C_IP:9001"
+  #       labels:
+  #         role: "server"
