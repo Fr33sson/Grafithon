@@ -1,77 +1,86 @@
-# ============================================================
-# Prometheus configuration - Grafithon
-#
-# Server A:
-#   - Prometheus
-#   - Alertmanager
-#   - Grafana
-#   - Local node_exporter (Docker)
-#
-# Server B / C / D:
-#   - node_exporter (Docker)
-#   - port 9100 allowed ONLY from Server A public IP
-# ============================================================
+version: "3.8"
 
-global:
-  scrape_interval: 15s
-  scrape_timeout: 10s
-  evaluation_interval: 15s
-  external_labels:
-    environment: "prod"
-    monitor: "grafithon"
+networks:
+  monitoring:
+    driver: bridge
 
-alerting:
-  alertmanagers:
-    - static_configs:
-        - targets: ["alertmanager:9093"]
+volumes:
+  prometheus_data:
+  grafana_data:
+  alertmanager_data:
 
-rule_files:
-  - "/etc/prometheus/server_alerts.yml"
-  - "/etc/prometheus/cosmos_alerts_cometbft.yml"
-  - "/etc/prometheus/cosmos_alerts_tendermint.yml"
+services:
+  node-exporter:
+    container_name: node_exporter
+    image: prom/node-exporter:latest
+    restart: unless-stopped
+    networks:
+      - monitoring
+    ports:
+      - "127.0.0.1:9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/rootfs
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
 
-scrape_configs:
-  - job_name: "prometheus"
-    static_configs:
-      - targets: ["127.0.0.1:9090"]
+  prometheus:
+    container_name: prometheus
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    networks:
+      - monitoring
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - prometheus_data:/prometheus
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/server_alerts.yml:/etc/prometheus/server_alerts.yml:ro
+      - ./prometheus/cosmos_alerts_cometbft.yml:/etc/prometheus/cosmos_alerts_cometbft.yml:ro
+      - ./prometheus/cosmos_alerts_tendermint.yml:/etc/prometheus/cosmos_alerts_tendermint.yml:ro
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    ports:
+      - "127.0.0.1:9090:9090"
 
-  # Local node exporter (container in docker network)
-  # NOTE: Prometheus runs in host network, so it cannot resolve docker DNS names.
-  # We scrape node-exporter via localhost published port OR host-gateway alternative.
-  #
-  # Easiest: publish node-exporter to localhost and scrape 127.0.0.1:9100.
-  # If you do NOT publish 9100, then use host IP or keep node-exporter on host instead.
-  #
-  # Recommended approach (safe): publish node-exporter on localhost:
-  #   in docker-compose node-exporter add:
-  #     ports: ["127.0.0.1:9100:9100"]
-  #
-  - job_name: "node-exporter-local"
-    static_configs:
-      - targets: ["127.0.0.1:9100"]
-        labels:
-          instance: "server-a"
+  alertmanager:
+    container_name: alertmanager
+    image: prom/alertmanager:latest
+    restart: unless-stopped
+    networks:
+      - monitoring
+    volumes:
+      - ./alertmanager/config.yml:/etc/alertmanager/config.yml:ro
+      - ./alertmanager/templates:/etc/alertmanager/templates:ro
+      - alertmanager_data:/alertmanager
+    command:
+      - --config.file=/etc/alertmanager/config.yml
+      - --storage.path=/alertmanager
+    expose:
+      - "9093"
 
-  # CometBFT metrics (systemd node on the same host)
-  - job_name: "testnet-local"
-    metrics_path: /metrics
-    static_configs:
-      - targets: ["host.docker.internal:PORT"]
-        labels:
-          chain_id: "testnet"
-          role: "fullnode"
-          instance: "network-fullnode"
-      - targets: ["host.docker.internal:PORT"]
-        labels:
-          chain_id: "testnet"
-          role: "validator"
-          instance: "val-testnet"
-
-  # Remote servers example (node exporter)
-  # - job_name: "node-exporter-remote"
-  #   static_configs:
-  #     - targets:
-  #         - "SERVER_B_IP:9001"
-  #         - "SERVER_C_IP:9001"
-  #       labels:
-  #         role: "server"
+  grafana:
+    container_name: grafana
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    networks:
+      - monitoring
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    environment:
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_DOMAIN=dashboards.domain.com
+      - GF_SERVER_ROOT_URL=https://dashboards.domain.com
+      - GF_SERVER_SERVE_FROM_SUB_PATH=false
+    depends_on:
+      - prometheus
